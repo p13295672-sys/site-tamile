@@ -1,28 +1,44 @@
-# Configurar proteção do painel Mavie Closet
+# Ativar o painel Mavie Closet sem Zero Trust
 
-O painel só fica protegido quando o projeto estiver publicado no Cloudflare Pages e a aplicação Cloudflare Access estiver configurada. A verificação no servidor fecha o acesso se faltar configuração, se o token não for válido ou se o e-mail não for o autorizado.
+O painel usa Login do Google e uma sessão assinada pelas Pages Functions. O servidor só aceita `tamilemaria@hotmail.com`; a senha Google nunca é pedida nem guardada pelo site. Não é necessário ativar Cloudflare Zero Trust.
 
-## Publicação
+## 1. Criar a credencial Google
 
-1. Crie um projeto Cloudflare Pages conectado ao repositório GitHub `p13295672-sys/site-tamile`.
-2. Defina a pasta de saída como `.` e deixe o comando de build vazio.
-3. Em **Settings → Variables and Secrets**, configure:
-   - `CF_ACCESS_TEAM_DOMAIN`: domínio da equipe Cloudflare Access, como `https://equipe.cloudflareaccess.com`.
-   - `CF_ACCESS_AUD`: Audience (AUD) da aplicação Access.
-   - `ADMIN_EMAIL`: `tamilemaria@hotmail.com`.
-   - `GITHUB_OWNER`: `p13295672-sys`.
-   - `GITHUB_REPO`: `site-tamile`.
-   - `GITHUB_BRANCH`: `main`.
-   - `GITHUB_TOKEN`: fine-grained token restrito a este repositório, com **Contents: Read and write**. Cadastre como **Secret**, nunca como variável pública.
+1. Acesse o Google Cloud Console e crie ou escolha um projeto.
+2. Configure a tela de consentimento OAuth como **External** e inclua `tamilemaria@hotmail.com` como usuário de teste enquanto o app estiver em teste. Uma conta Hotmail pode ser usada se estiver cadastrada como Conta Google.
+3. Crie uma credencial **OAuth client ID** do tipo **Web application**.
+4. Em **Authorized JavaScript origins**, adicione `https://site-tamile.pages.dev` (sem caminho final).
+5. Copie o Client ID. Ele não é segredo; o token de login é validado no servidor.
 
-## Cloudflare Access e Google
+## 2. Criar um segredo de sessão
 
-1. Adicione o provedor Google ao Cloudflare Access. O endereço autorizado precisa ser uma Conta Google; um endereço Hotmail pode ser usado após cadastro como Conta Google.
-2. Crie uma aplicação Access **Self-hosted** para o domínio publicado e proteja `/admin.html` e `/api/admin/*`.
-3. Crie uma política Allow com apenas `tamilemaria@hotmail.com`. Não crie política pública ou Bypass para esses caminhos.
-4. Anote o Audience (AUD) da aplicação e o domínio da equipe e cadastre-os nas variáveis acima.
-5. Proteja também o domínio de produção `*.pages.dev` e os domínios de preview utilizados; eles podem exigir aplicações Access separadas.
-6. Ative **Fail closed** para limites de execução das Pages Functions.
-7. Confirme que o painel pede login Google e que somente o e-mail autorizado consegue acessar.
+Gere uma chave aleatória longa (pelo menos 32 caracteres). Cadastre-a diretamente como **Secret** no Cloudflare; não a coloque neste arquivo nem no GitHub. Se usar o Terminal do Mac, `openssl rand -hex 32` gera um valor adequado. Nunca cole tokens ou segredos na conversa.
 
-O painel não usa mais token GitHub no navegador. O token de publicação fica como Secret das Pages Functions, e as funções verificam a identidade Access e o e-mail permitido.
+## 3. Cadastrar variáveis no Cloudflare Pages
+
+No projeto `site-tamile`, abra **Settings → Variables and Secrets** e adicione as variáveis para **Production**. Se quiser testar em previews, configure-as também no ambiente **Preview**.
+
+| Nome | Tipo | Valor |
+|---|---|---|
+| `ADMIN_EMAIL` | variável | `tamilemaria@hotmail.com` |
+| `GOOGLE_CLIENT_ID` | variável | Client ID criado na etapa 1 |
+| `ADMIN_SESSION_SECRET` | Secret | chave aleatória criada na etapa 2 |
+| `GITHUB_OWNER` | variável | `p13295672-sys` |
+| `GITHUB_REPO` | variável | `site-tamile` |
+| `GITHUB_BRANCH` | variável | `main` |
+| `GITHUB_TOKEN` | Secret | token fine-grained com acesso somente ao repositório `site-tamile` e permissão **Contents: Read and write** |
+
+Salve as configurações e inicie um novo deploy (ou faça um novo commit) para as Functions receberem as variáveis.
+
+## 4. Testar
+
+Abra `https://site-tamile.pages.dev/admin.html`. Antes do login, o painel e suas funções de leitura e escrita permanecem bloqueados. Entre com a conta Google autorizada. A sessão expira após uma hora e usa cookie `Secure`, `HttpOnly` e `SameSite=Strict`.
+
+Se o token GitHub anteriormente compartilhado na conversa ainda estiver ativo, revogue-o nas configurações do GitHub e gere outro. Cadastre o novo diretamente no Cloudflare como Secret.
+
+## Observações
+
+- Cloudflare Zero Trust não faz parte deste método e não é necessário configurar cobrança para ativá-lo.
+- As Pages Functions são executadas no plano gratuito dentro dos limites vigentes do Cloudflare. O login verifica a assinatura do token Google no servidor e exige e-mail verificado, emissor, audiência e nonce válidos.
+- O painel pode ser visto por qualquer pessoa como tela de login, mas somente a conta configurada consegue abrir os recursos administrativos.
+- O login é para uma única conta permitida por `ADMIN_EMAIL`.
