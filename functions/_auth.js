@@ -42,7 +42,14 @@ export async function createSession(email, secret) {
   return `${payload}.${b64url(new Uint8Array(signature))}`;
 }
 
-export async function verifySession(value, secret, allowedEmail) {
+export function allowedAdminEmails(env) {
+  return String(env.ADMIN_EMAIL || "")
+    .split(/[;,\s]+/)
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export async function verifySession(value, secret, allowedEmails) {
   if (!value || !secret) return null;
   try {
     const [payload, signature, extra] = value.split(".");
@@ -50,7 +57,8 @@ export async function verifySession(value, secret, allowedEmail) {
     const valid = await crypto.subtle.verify("HMAC", await hmacKey(secret), fromB64url(signature), encoder.encode(payload));
     if (!valid) return null;
     const claims = decodeJson(payload);
-    if (claims.exp <= Math.floor(Date.now() / 1000) || claims.email !== allowedEmail) return null;
+    const allowlist = Array.isArray(allowedEmails) ? allowedEmails : [allowedEmails];
+    if (claims.exp <= Math.floor(Date.now() / 1000) || !allowlist.includes(String(claims.email || "").toLowerCase())) return null;
     return claims;
   } catch { return null; }
 }
@@ -67,7 +75,7 @@ export async function verifyGoogleCredential(token, env, expectedNonce) {
     if (!issuerOk || claims.aud !== env.GOOGLE_CLIENT_ID || !claims.sub ||
         !Number.isFinite(claims.exp) || claims.exp <= now ||
         (claims.iat && claims.iat > now + 60) || claims.nonce !== expectedNonce ||
-        claims.email_verified !== true || String(claims.email || "").toLowerCase() !== env.ADMIN_EMAIL.trim().toLowerCase()) return null;
+        claims.email_verified !== true || !allowedAdminEmails(env).includes(String(claims.email || "").toLowerCase())) return null;
     const response = await fetch("https://www.googleapis.com/oauth2/v3/certs", { headers: { Accept: "application/json" } });
     if (!response.ok) return null;
     const jwks = await response.json();
