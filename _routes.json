@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "include": ["/admin.html", "/api/admin/*"],
+  "exclude": []
+}
