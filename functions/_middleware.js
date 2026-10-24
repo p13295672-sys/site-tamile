@@ -1,4 +1,4 @@
-import { cookies, verifySession, SESSION_COOKIE } from "./_auth.js";
+import { allowedAdminEmails, cookies, verifySession, SESSION_COOKIE } from "./_auth.js";
 
 const publicAdminRoutes = new Set([
   "/api/admin/login-config",
@@ -25,8 +25,9 @@ export async function onRequest({ request, env, next }) {
   const fail = () => new Response("Não foi possível acessar esta página.", {
     status: 404, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" }
   });
-  if (!env.ADMIN_EMAIL || !env.ADMIN_SESSION_SECRET) return fail();
-  const session = await verifySession(cookies(request)[SESSION_COOKIE], env.ADMIN_SESSION_SECRET, env.ADMIN_EMAIL.trim().toLowerCase());
+  const allowedEmails = allowedAdminEmails(env);
+  if (!allowedEmails.length || !env.ADMIN_SESSION_SECRET) return fail();
+  const session = await verifySession(cookies(request)[SESSION_COOKIE], env.ADMIN_SESSION_SECRET, allowedEmails);
   if (!session) return fail();
   return headersFor(await next());
 }
